@@ -1,0 +1,15 @@
+{
+  "name": "Courrier Express",
+  "short_name": "Courrier",
+  "description": "Au galop, cavalier ! Saute rochers et cactus, attrape lettres et pièces, et livre le courrier le plus loin possible.",
+  "lang": "fr",
+  "start_url": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F8A55B",
+  "theme_color": "#F8A55B",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

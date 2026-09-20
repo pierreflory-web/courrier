@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Courrier Express</title>
+<meta name="description" content="Au galop, cavalier ! Saute rochers et cactus, attrape lettres et pièces, et livre le courrier le plus loin possible.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="theme-color" content="#2a1445">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; background: #F8A55B; touch-action: none;
+    font-family: Georgia, 'Times New Roman', serif; color: #3B2417; }
+  #jeu { position: fixed; left: 0; top: 0; display: block; }
+
+  .voile {
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    background: rgba(59, 36, 23, .55); backdrop-filter: blur(3px); padding: 18px;
+  }
+  .voile[hidden] { display: none; }
+  .boite {
+    background: #FBF0D8; border: 3px solid #7C4A24; border-radius: 22px;
+    padding: 26px 24px; max-width: 420px; width: 100%; text-align: center;
+    box-shadow: 0 12px 44px rgba(0,0,0,.45);
+  }
+  .boite h1 { color: #A63A2E; font-size: 28px; margin-bottom: 4px; }
+  .boite .em { font-size: 52px; line-height: 1.25; }
+  .boite p { color: #6b4a2e; font-size: 15.5px; line-height: 1.55; margin: 10px 0; }
+  .btn {
+    font-family: inherit; font-size: 18px; font-weight: bold;
+    background: #A63A2E; color: #FBF0D8;
+    border: 0; border-radius: 14px; padding: 13px 26px; cursor: pointer;
+    box-shadow: 0 4px 0 #712B13; margin-top: 8px;
+  }
+  .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 #712B13; }
+  .retour {
+    display: inline-block; margin-top: 14px; font-size: 14px; color: #7C4A24;
+    text-decoration: none; border-bottom: 1px dashed #7C4A24; padding-bottom: 1px;
+  }
+  #quiJoue { font-size: 14.5px; color: #A63A2E; }
+  #quiJoue b { color: #7C4A24; }
+  .record { color: #1D9E75; font-weight: bold; }
+  .score-ligne { font-size: 17px; color: #3B2417; margin: 4px 0; }
+  .score-ligne b { color: #A63A2E; }
+
+  #hud {
+    position: fixed; top: env(safe-area-inset-top, 0px); left: 0; right: 0; z-index: 10;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 16px; font-weight: bold; font-size: 17px; color: #5A3418;
+    text-shadow: 0 1px 0 rgba(255,244,218,.7); pointer-events: none;
+  }
+  #hud span { background: rgba(251,240,216,.75); border-radius: 12px; padding: 4px 12px; }
+</style>
+</head>
+<body>
+
+<canvas id="jeu"></canvas>
+
+<div id="hud" hidden>
+  <span id="hDist">0 m</span>
+  <span id="hLettres">&#9993;&#65039; 0</span>
+  <span id="hPieces">&#129689; 0</span>
+</div>
+
+<div class="voile" id="accueil">
+  <div class="boite">
+    <div class="em">&#128014;&#128236;</div>
+    <h1>Courrier Express</h1>
+    <p>Le courrier doit passer, quoi qu'il arrive !<br>
+    <b>Tape l'écran</b> (ou Espace) pour sauter les rochers et les cactus —
+    tape une deuxième fois en l'air pour un <b>double saut</b>.<br>
+    Attrape les <b>lettres &#9993;&#65039;</b> et les <b>pièces &#129689;</b> en chemin !</p>
+    <p id="quiJoue"></p>
+    <button class="btn" id="btnGo">En selle !</button><br>
+    <a class="retour" href="https://pierreflory-web.github.io/jeux/">&#8592; Retour à Mes Jeux</a>
+  </div>
+</div>
+
+<div class="voile" id="fin" hidden>
+  <div class="boite">
+    <div class="em" id="finEmoji">&#128014;</div>
+    <h1 id="finTitre">Fin de la course !</h1>
+    <p class="score-ligne">Distance : <b id="finDist">0 m</b></p>
+    <p class="score-ligne">Lettres livrées : <b id="finLettres">0</b></p>
+    <p class="score-ligne">Pièces ramassées : <b id="finPieces">0</b></p>
+    <p id="finRecord"></p>
+    <button class="btn" id="btnRejouer">Repartir au galop !</button><br>
+    <a class="retour" href="https://pierreflory-web.github.io/jeux/">&#8592; Retour à Mes Jeux</a>
+  </div>
+</div>
+
+<script src="https://pierreflory-web.github.io/jeux/points.js"></script>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const canvas = $("jeu");
+const ctx = canvas.getContext("2d");
+let W = 0, H = 0, SOL = 0;
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  SOL = H * 0.78;
+}
+resize();
+window.addEventListener("resize", resize);
+
+const session = window.MesJeux ? MesJeux.session() : null;
+if (session && session.pseudo) $("quiJoue").innerHTML = "Le courrier t'attend, <b>" + session.pseudo + "</b> !";
+else $("quiJoue").innerHTML = "⭐ Connecte-toi sur <b>Mes Jeux</b> pour gagner points et pièces.";
+
+const CLE_RECORD = "courrier_record_" + (session ? session.id : "local");
+function record() { try { return parseInt(localStorage.getItem(CLE_RECORD)) || 0; } catch (e) { return 0; } }
+
+/* ——— Audio ——— */
+let actx = null, muet = false;
+function beep(f, d, type, v, slide) {
+  if (muet) return;
+  try {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === "suspended") actx.resume();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type || "square"; o.frequency.value = f;
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, f + slide), actx.currentTime + d);
+    g.gain.value = v || .05;
+    g.gain.exponentialRampToValueAtTime(.0001, actx.currentTime + d);
+    o.connect(g); g.connect(actx.destination);
+    o.start(); o.stop(actx.currentTime + d);
+  } catch (e) {}
+}
+
+/* ——— État ——— */
+let etat = "accueil";   // accueil | course | fin
+let vitesse, distancePx, lettres, pieces, tSpawn, tDeco, obstacles, bonus, decors, poussiere;
+let chevalY, chevalVy, sauts, jambePhase, dernierT;
+
+function nouvellePartie() {
+  vitesse = 300; distancePx = 0; lettres = 0; pieces = 0;
+  tSpawn = 1.2; tDeco = .4;
+  obstacles = []; bonus = []; decors = []; poussiere = [];
+  chevalY = 0; chevalVy = 0; sauts = 0; jambePhase = 0;
+}
+
+const metres = () => Math.floor(distancePx / 8);
+
+/* ——— Contrôles ——— */
+function sauter() {
+  if (etat !== "course") return;
+  if (sauts >= 2) return;
+  sauts++;
+  chevalVy = sauts === 1 ? -720 : -600;
+  beep(sauts === 1 ? 300 : 400, .12, "square", .05, 200);
+}
+window.addEventListener("pointerdown", e => {
+  if (e.target.closest(".boite")) return;
+  if (e.cancelable) e.preventDefault();
+  sauter();
+});
+window.addEventListener("keydown", e => {
+  if (e.code === "Space" || e.code === "ArrowUp") { e.preventDefault(); sauter(); }
+});
+
+function demarrer() {
+  nouvellePartie();
+  etat = "course";
+  $("accueil").hidden = true; $("fin").hidden = true; $("hud").hidden = false;
+  majHud();
+  dernierT = performance.now();
+}
+$("btnGo").addEventListener("click", demarrer);
+$("btnRejouer").addEventListener("click", demarrer);
+
+function majHud() {
+  $("hDist").textContent = metres() + " m";
+  $("hLettres").innerHTML = "&#9993;&#65039; " + lettres;
+  $("hPieces").innerHTML = "&#129689; " + pieces;
+}
+
+/* ——— Pièces créditées directement (comme le Ranch et Witch) ——— */
+const SB_URL = "https://xmuohrglecqtpoyzssfj.supabase.co/rest/v1";
+const SB_KEY = "sb_publishable_Y9EMQFz64Vt0n1GAs9wv1A_ciDRgNVz";
+async function crediterPieces(n) {
+  if (!session || !n) return;
+  try {
+    const res = await fetch(SB_URL + "/players?select=coins&id=eq." + session.id, {
+      headers: { "apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY }
+    });
+    const rows = await res.json();
+    if (!rows[0]) return;
+    await fetch(SB_URL + "/players?id=eq." + session.id, {
+      method: "PATCH",
+      headers: { "apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ coins: (rows[0].coins || 0) + n })
+    });
+  } catch (e) { /* pas de réseau : tant pis pour cette fois */ }
+}
+
+/* ——— Fin de course ——— */
+async function finDeCourse() {
+  if (etat !== "course") return;
+  etat = "fin";
+  $("hud").hidden = true;
+  beep(180, .4, "sawtooth", .07, -120);
+
+  const m = metres();
+  const nouveauRecord = m > record();
+  if (nouveauRecord) { try { localStorage.setItem(CLE_RECORD, String(m)); } catch (e) {} }
+
+  $("finEmoji").textContent = nouveauRecord ? "🎉🐎🎉" : (m >= 500 ? "🌟🐎🌟" : "💫🐎");
+  $("finTitre").textContent = nouveauRecord ? "Nouveau record !" : "Fin de la course !";
+  $("finDist").textContent = m + " m";
+  $("finLettres").textContent = lettres;
+  $("finPieces").textContent = pieces;
+  $("finRecord").innerHTML = nouveauRecord
+    ? "<span class='record'>🎉 Record personnel battu !</span>"
+    : (record() ? "<span style='font-size:14px;color:#7C4A24;'>Ton record : " + record() + " m</span>" : "");
+  $("fin").hidden = false;
+
+  // Points pour le lanceur Mes Jeux
+  if (window.MesJeux && m >= 10) {
+    const lignes = [[Math.max(1, Math.round(m / 100)), m + " m au galop"]];
+    if (lettres >= 1) lignes.push([lettres, lettres + " lettre" + (lettres > 1 ? "s" : "") + " livrée" + (lettres > 1 ? "s" : "")]);
+    if (lettres >= 10) lignes.push([5, "10 lettres et plus dans la sacoche"]);
+    if (m >= 1000) lignes.push([5, "Course de 1 000 m et plus"]);
+    try { await MesJeux.award("courrier", lignes, { m: m, lettres: lettres }); } catch (e) {}
+  }
+  await crediterPieces(pieces);
+}
+
+/* ——— Génération du monde ——— */
+function spawnObstacle() {
+  const type = Math.random() < .55 ? "cactus" : "rocher";
+  if (type === "cactus") obstacles.push({ type, x: W + 60, w: 34, h: 64 + Math.random() * 26 });
+  else obstacles.push({ type, x: W + 60, w: 56 + Math.random() * 26, h: 34 + Math.random() * 14 });
+}
+function spawnBonus() {
+  const type = Math.random() < .68 ? "lettre" : "piece";
+  const haut = Math.random() < .5;
+  const y = SOL - (haut ? 150 + Math.random() * 90 : 60 + Math.random() * 40);
+  const n = type === "lettre" ? 3 : 1;
+  for (let i = 0; i < n; i++) bonus.push({ type, x: W + 60 + i * 46, y: y - i * 8, r: 16 });
+}
+function spawnDeco() {
+  const r = Math.random();
+  if (r < .4) decors.push({ type: "mesa", x: W + 200, k: .25, w: 260 + Math.random() * 160, h: 90 + Math.random() * 70 });
+  else if (r < .7) decors.push({ type: "nuage", x: W + 100, k: .15, y: 40 + Math.random() * H * .2, w: 90 + Math.random() * 60 });
+  else decors.push({ type: "buisson", x: W + 60, k: 1, w: 26 + Math.random() * 20 });
+}
+
+/* ——— Boucle ——— */
+function boucle(t) {
+  requestAnimationFrame(boucle);
+  const dt = Math.min(.05, (t - (dernierT || t)) / 1000);
+  dernierT = t;
+  if (etat === "course") maj(dt);
+  dessiner();
+}
+
+function maj(dt) {
+  vitesse = Math.min(640, vitesse + 9 * dt);
+  distancePx += vitesse * dt;
+  jambePhase += dt * (vitesse / 34);
+
+  // cheval
+  chevalVy += 2100 * dt;
+  chevalY += chevalVy * dt;
+  if (chevalY > 0) { chevalY = 0; chevalVy = 0; sauts = 0; }
+
+  // poussière de galop
+  if (chevalY === 0 && Math.random() < .5) {
+    poussiere.push({ x: W * .22 - 40, y: SOL - 6, r: 4 + Math.random() * 5, vie: .5 });
+  }
+  poussiere.forEach(p => { p.x -= vitesse * dt * .6; p.y -= 12 * dt; p.vie -= dt; });
+  poussiere = poussiere.filter(p => p.vie > 0);
+
+  // spawns
+  tSpawn -= dt;
+  if (tSpawn <= 0) {
+    spawnObstacle();
+    if (Math.random() < .65) spawnBonus();
+    tSpawn = (46 + Math.random() * 42) * 14 / vitesse;
+  }
+  tDeco -= dt;
+  if (tDeco <= 0) { spawnDeco(); tDeco = .5 + Math.random() * .9; }
+
+  // défilement
+  obstacles.forEach(o => o.x -= vitesse * dt);
+  bonus.forEach(b => b.x -= vitesse * dt);
+  decors.forEach(d => d.x -= vitesse * dt * d.k);
+  obstacles = obstacles.filter(o => o.x + o.w > -80);
+  bonus = bonus.filter(b => b.x > -60);
+  decors = decors.filter(d => d.x > -600);
+
+  // collisions
+  const cx = W * .22, cy = SOL + chevalY;
+  const box = { x: cx - 44, y: cy - 78, w: 96, h: 76 };
+  for (const o of obstacles) {
+    const ob = { x: o.x + 6, y: SOL - o.h + 6, w: o.w - 12, h: o.h - 6 };
+    if (box.x < ob.x + ob.w && box.x + box.w > ob.x && box.y < ob.y + ob.h && box.y + box.h > ob.y) {
+      finDeCourse();
+      return;
+    }
+  }
+  for (const b of bonus) {
+    const dx = b.x - cx, dy = b.y - (cy - 40);
+    if (dx * dx + dy * dy < (b.r + 42) * (b.r + 42)) {
+      b.x = -999;
+      if (b.type === "lettre") { lettres++; beep(880, .1, "triangle", .06, 300); }
+      else { pieces++; beep(1200, .12, "triangle", .06, 400); }
+      majHud();
+    }
+  }
+  majHud();
+}
+
+/* ——— Dessin ——— */
+function dessiner() {
+  // ciel coucher de soleil
+  const g = ctx.createLinearGradient(0, 0, 0, SOL);
+  g.addColorStop(0, "#FFE9B5"); g.addColorStop(.55, "#FFD98E"); g.addColorStop(1, "#F8A55B");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, SOL);
+  // soleil
+  ctx.fillStyle = "#FFDD66";
+  ctx.strokeStyle = "#E8A93F"; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(W * .8, H * .16, 40, 0, 7); ctx.fill(); ctx.stroke();
+
+  // décors lointains
+  for (const d of decors) {
+    if (d.type === "mesa") {
+      ctx.fillStyle = "#DE9463"; ctx.strokeStyle = "#C9713F"; ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(d.x, SOL);
+      ctx.lineTo(d.x + d.w * .18, SOL - d.h);
+      ctx.lineTo(d.x + d.w * .82, SOL - d.h);
+      ctx.lineTo(d.x + d.w, SOL);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    } else if (d.type === "nuage") {
+      ctx.fillStyle = "#FFF4DA"; ctx.strokeStyle = "#E8C687"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.ellipse(d.x, d.y, d.w * .5, d.w * .19, 0, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(d.x + d.w * .3, d.y - d.w * .1, d.w * .3, d.w * .13, 0, 0, 7); ctx.fill(); ctx.stroke();
+    }
+  }
+
+  // sol
+  const gs = ctx.createLinearGradient(0, SOL, 0, H);
+  gs.addColorStop(0, "#D9A464"); gs.addColorStop(1, "#C68E4E");
+  ctx.fillStyle = gs;
+  ctx.fillRect(0, SOL, W, H - SOL);
+  // ornières
+  ctx.strokeStyle = "#BC8449"; ctx.lineWidth = 5; ctx.lineCap = "round";
+  const dec = -(distancePx % 90);
+  ctx.beginPath();
+  for (let x = dec; x < W + 90; x += 90) { ctx.moveTo(x, SOL + 26); ctx.lineTo(x + 44, SOL + 24); }
+  ctx.stroke();
+
+  // buissons au sol
+  for (const d of decors) {
+    if (d.type === "buisson") {
+      ctx.strokeStyle = "#8F9A4B"; ctx.lineWidth = 2.4; ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(d.x, SOL + 4); ctx.quadraticCurveTo(d.x + 2, SOL - d.w * .6, d.x - d.w * .2, SOL - d.w * .8);
+      ctx.moveTo(d.x + 6, SOL + 4); ctx.quadraticCurveTo(d.x + 8, SOL - d.w * .5, d.x + d.w * .3, SOL - d.w * .7);
+      ctx.stroke();
+    }
+  }
+
+  // poussière
+  for (const p of poussiere) {
+    ctx.globalAlpha = Math.max(0, p.vie) * .6;
+    ctx.fillStyle = "#E0C68C";
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // obstacles
+  for (const o of obstacles) {
+    if (o.type === "cactus") dessinerCactus(o);
+    else dessinerRocher(o);
+  }
+
+  // bonus
+  for (const b of bonus) {
+    if (b.x < -100) continue;
+    if (b.type === "lettre") {
+      ctx.save();
+      ctx.translate(b.x, b.y + Math.sin((distancePx + b.x) / 60) * 5);
+      ctx.fillStyle = "#FBF0D8"; ctx.strokeStyle = "#7C4A24"; ctx.lineWidth = 2;
+      ctx.fillRect(-15, -11, 30, 22); ctx.strokeRect(-15, -11, 30, 22);
+      ctx.beginPath(); ctx.moveTo(-15, -11); ctx.lineTo(0, 2); ctx.lineTo(15, -11); ctx.stroke();
+      ctx.fillStyle = "#A63A2E";
+      ctx.beginPath(); ctx.arc(0, 5, 3.4, 0, 7); ctx.fill();
+      ctx.restore();
+    } else {
+      ctx.save();
+      ctx.translate(b.x, b.y + Math.sin((distancePx + b.x) / 50) * 5);
+      ctx.fillStyle = "#FFDD66"; ctx.strokeStyle = "#B8860B"; ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.arc(0, 0, 13, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = "#E8A93F"; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(0, 0, 8, 0, 7); ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // cheval + cavalier
+  if (etat !== "accueil") dessinerCheval(W * .22, SOL + chevalY);
+  else dessinerCheval(W * .22, SOL);
+}
+
+function dessinerCactus(o) {
+  const x = o.x + o.w / 2, h = o.h;
+  ctx.strokeStyle = "#5E8C4F"; ctx.lineWidth = 13; ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(x, SOL + 2); ctx.lineTo(x, SOL - h);
+  ctx.moveTo(x, SOL - h * .55); ctx.quadraticCurveTo(x - 18, SOL - h * .6, x - 18, SOL - h * .85);
+  ctx.moveTo(x, SOL - h * .4); ctx.quadraticCurveTo(x + 18, SOL - h * .45, x + 18, SOL - h * .7);
+  ctx.stroke();
+  ctx.strokeStyle = "#4A7040"; ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(x - 3, SOL - h * .2); ctx.lineTo(x - 3, SOL - h * .8);
+  ctx.stroke();
+}
+function dessinerRocher(o) {
+  ctx.fillStyle = "#B0925C"; ctx.strokeStyle = "#7C4A24"; ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  ctx.moveTo(o.x, SOL + 2);
+  ctx.quadraticCurveTo(o.x + o.w * .1, SOL - o.h, o.x + o.w * .5, SOL - o.h);
+  ctx.quadraticCurveTo(o.x + o.w * .92, SOL - o.h * .9, o.x + o.w, SOL + 2);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = "#9A7B48"; ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(o.x + o.w * .3, SOL - o.h * .5); ctx.lineTo(o.x + o.w * .5, SOL - o.h * .25);
+  ctx.stroke();
+}
+
+function dessinerCheval(cx, sol) {
+  const enAir = chevalY < -4;
+  const ph = Math.sin(jambePhase * 2);
+  ctx.save();
+  ctx.translate(cx, sol);
+
+  // ombre
+  ctx.fillStyle = "rgba(59,36,23,.18)";
+  ctx.beginPath(); ctx.ellipse(0, -2 - chevalY * .06, 52 + chevalY * .04, 8, 0, 0, 7); ctx.fill();
+
+  // jambes (galop simple : 2 paires en ciseaux)
+  ctx.strokeStyle = "#B07743"; ctx.lineWidth = 9; ctx.lineCap = "round";
+  const a = enAir ? .9 : ph, b = enAir ? -.7 : -ph;
+  ctx.beginPath();
+  ctx.moveTo(-26, -34); ctx.lineTo(-30 + a * 12, -14); ctx.lineTo(-32 + a * 16, -2);
+  ctx.moveTo(-18, -34); ctx.lineTo(-16 + b * 10, -14); ctx.lineTo(-15 + b * 15, -2);
+  ctx.moveTo(20, -34); ctx.lineTo(24 + b * 12, -14); ctx.lineTo(25 + b * 16, -2);
+  ctx.moveTo(28, -34); ctx.lineTo(31 + a * 10, -14); ctx.lineTo(33 + a * 14, -2);
+  ctx.stroke();
+  // sabots
+  ctx.fillStyle = "#4E342E";
+  [[-32 + a * 16], [-15 + b * 15], [25 + b * 16], [33 + a * 14]].forEach(([hx]) => {
+    ctx.fillRect(hx - 5, -6, 10, 6);
+  });
+
+  // corps
+  ctx.fillStyle = "#B07743"; ctx.strokeStyle = "#7C4A24"; ctx.lineWidth = 2.4;
+  ctx.beginPath(); ctx.ellipse(0, -46, 40, 20, 0, 0, 7); ctx.fill(); ctx.stroke();
+
+  // queue au vent
+  ctx.strokeStyle = "#6B4226"; ctx.lineWidth = 7; ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(-38, -52);
+  ctx.quadraticCurveTo(-58, -50 + ph * 4, -66, -38 + ph * 6);
+  ctx.stroke();
+
+  // encolure + tête tendues vers l'avant
+  ctx.fillStyle = "#B07743"; ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  ctx.moveTo(26, -58); ctx.quadraticCurveTo(44, -66, 58, -64);
+  ctx.lineTo(64, -56); ctx.quadraticCurveTo(46, -48, 30, -44);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(64, -60, 15, 9, -.18, 0, 7); ctx.fill(); ctx.stroke();
+  // naseau, œil, oreille
+  ctx.fillStyle = "#3B2417";
+  ctx.beginPath(); ctx.arc(75, -58, 1.8, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(60, -63, 2.2, 0, 7); ctx.fill();
+  ctx.fillStyle = "#9A6232";
+  ctx.beginPath(); ctx.moveTo(54, -68); ctx.lineTo(58, -78); ctx.lineTo(62, -68); ctx.closePath(); ctx.fill();
+  // crinière
+  ctx.strokeStyle = "#6B4226"; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.moveTo(30, -60); ctx.quadraticCurveTo(42, -70, 52, -68); ctx.stroke();
+
+  // cavalier
+  ctx.strokeStyle = "#4A5A6A"; ctx.lineWidth = 8; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(-2, -60); ctx.lineTo(6, -44); ctx.stroke();      // jambe
+  ctx.fillStyle = "#A63A2E";
+  ctx.beginPath(); ctx.ellipse(-2, -78, 11, 15, .12, 0, 7); ctx.fill();          // torse
+  ctx.strokeStyle = "#A63A2E"; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(2, -80); ctx.quadraticCurveTo(18, -76, 30, -64); ctx.stroke(); // bras vers les rênes
+  ctx.strokeStyle = "#5A2018"; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.moveTo(30, -64); ctx.lineTo(62, -62); ctx.stroke();      // rênes
+  ctx.fillStyle = "#F2C094";
+  ctx.beginPath(); ctx.arc(0, -98, 8, 0, 7); ctx.fill();                        // tête
+  ctx.fillStyle = "#3B2417";                                                     // chapeau
+  ctx.beginPath(); ctx.ellipse(0, -103, 13, 3.4, 0, 0, 7); ctx.fill();
+  ctx.fillRect(-6, -112, 12, 9);
+  // sacoche du courrier
+  ctx.fillStyle = "#8A5A3C"; ctx.strokeStyle = "#5A3418"; ctx.lineWidth = 1.6;
+  ctx.fillRect(-16, -64, 16, 14); ctx.strokeRect(-16, -64, 16, 14);
+  ctx.fillStyle = "#FBF0D8";
+  ctx.fillRect(-13, -61, 10, 7);
+
+  ctx.restore();
+}
+
+requestAnimationFrame(boucle);
+
+if ("serviceWorker" in navigator && location.protocol === "https:") {
+  navigator.serviceWorker.register("sw.js").catch(function () {});
+}
+</script>
+</body>
+</html>
