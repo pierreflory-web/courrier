@@ -509,6 +509,7 @@ function dessinerCheval(cx, sol) {
   ctx.restore();
 }
 
+nouvellePartie();   // pour que le décor de l'accueil soit prêt
 requestAnimationFrame(boucle);
 
 if ("serviceWorker" in navigator && location.protocol === "https:") {

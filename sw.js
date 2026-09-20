@@ -1,4 +1,4 @@
-const CACHE = 'courrier-v1';
+const CACHE = 'courrier-v2';
 const ASSETS = [
   '.',
   'index.html',
